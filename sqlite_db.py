@@ -44,12 +44,12 @@ async def data_skip_school():
     data_skip_school = cur.execute("Select students.patronymic, students.Fname, date(skip_date,'unixepoch')  from skip_school 	INNER JOIN students ON 	skip_school.student_id = students.student_id ORDER BY skip_date ASC").fetchall()
     return data_skip_school  # list
 
+# Функция для получения всех пропусков одного ученика
 async def the_student_skips(student_id):
-    print(student_id)
     the_skips = cur.execute(f"SELECT students.patronymic, students.Fname, students.Lname, date(skip_school.skip_date,'unixepoch') FROM skip_school INNER JOIN students ON skip_school.student_id= students.student_id WHERE skip_school.student_id = {student_id} ORDER BY skip_date ASC").fetchall()
-    the_skips = cur.execute(f"SELECT 1").fetchall()
     return the_skips
- 
+
+# Получение данных о всех учениках
 async def information_about_students():
     students = cur.execute("SELECT DISTINCT students.student_id, students.Fname, students.Lname, students.patronymic FROM students INNER JOIN skip_school ON students.student_id = skip_school.student_id  ORDER BY students.patronymic ASC, students.Fname ASC").fetchall()
     
@@ -83,7 +83,6 @@ async def current_dates_skip(student_id):
     today = the_day.replace(hour=0, minute=0, second=0, microsecond=0)
     today_unix = round((today - dt(1970, 1, 1)).total_seconds())
     curent_skip_data = cur.execute(f"SELECT date(skip_date,'unixepoch') FROM skip_school WHERE student_id = {student_id} AND skip_date >= {today_unix} ORDER BY skip_date ASC").fetchall()
-    print(curent_skip_data)
     return curent_skip_data
     
 async def tomorrow_skip_school():

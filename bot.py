@@ -63,7 +63,8 @@ async def cmd_start(message: types.Message):
         await bot.send_message(chat_id=message.from_user.id,
                            text='Добро пожаловать!',
                            reply_markup=start_kb)  
-        
+
+#Обработчик команды 'Запись на дату'         
 @dp.message_handler(Text(equals=['Запись на дату'], ignore_case=True))
 async def nav_cal_handler(message: types.Message):    
     await bot.send_message(chat_id=message.from_user.id,
@@ -92,46 +93,35 @@ async def process_simple_calendar(callback_query: CallbackQuery, callback_data: 
                 f'Вы зафиксировали отгул на  {date.strftime("%d/%m/%Y")}',
                 reply_markup=start_kb)       
    
-#Обработчики выбора действий с отчетами о всех прогулах. 
-# Они вызывают функцию show_skip_school, которая отправляет сообщения 
-# с отчетами пользователю.    
-
+#Обработчики выбора действий с отчетами о прогулах. 
 @dp.callback_query_handler(callback_school.filter(action='today_skip'))
 async def today_skip(callback_query: CallbackQuery, callback_data: dict):  
     date_skip_school = await sqlite_db.today_skip_school()    
     await show_skip_school(callback_query, date_skip_school, "<b>Пропуски на сегодня:</b>")
     
-    
-@dp.callback_query_handler(callback_dates.filter(action='cancel'))
-async def cancel_dates(callback_query: CallbackQuery, callback_data: dict):
-    date_time_obj = datetime.datetime.strptime(callback_data.get('delete_date'), '%Y-%m-%d')
-    student_id = callback_data.get('students_id')
-    print(student_id)
-    print(date_time_obj)
-    await sqlite_db.delete_skip(student_id, date_time_obj)
-
+#Функция, в которой идет запись всех данных об одном ученике в .txt     
+async def writing_txt_file_dates(student_skips: list, name_file: str):
+    name_file = f'Пропуски {student_skips[0][0]} {student_skips[0][1]} {student_skips[0][2]}.txt'
+    #name_file = 'NameFile.txt'
+    file = open(name_file,'w', encoding='utf-8')
+    for skip in student_skips:
+        file.write(skip[3] + "\n")
+        
+#Вызов функции writing_txt_file_dates, отправка файла Админу         
 @dp.callback_query_handler(callback_students.filter(action='student_skips'))
 async def cancel_dates(callback_query: CallbackQuery, callback_data: dict):
-    print(callback_data)
     student_id = callback_data.get('student_id')
-    print("перед запуском запроса")
-    student_skips = await sqlite_db.the_student_skips(student_id)
-    print (student_skips)
-    
-    file = open('Пропуски:{student_skips[0]} {student_skips[1]} {student_skips[2]}.txt','w', encoding='utf-8')
-    for skip in student_skips:
-        file.write(skip[3] + "\n")            
-            
-    
+    student_skips = await sqlite_db.the_student_skips(student_id)      
+    name_file = f'Пропуски {student_skips[0][0]} {student_skips[0][1]} {student_skips[0][2]}.txt'
+    await writing_txt_file_dates(student_skips, name_file)
+    await bot.send_document(chat_id=callback_query.message.chat.id, document=types.InputFile(name_file))
 
-
+    
 @dp.callback_query_handler(callback_school.filter(action='all_skip'))
 async def delete_date(message: types.Message):    
     students = await sqlite_db.information_about_students()    
     ikb_current_skip_students = InlineKeyboardMarkup()
     for student in students:
-        print('студент:')
-        print(student[0])
         button_with_student = InlineKeyboardButton(f'{student[3]} {student[1]} {student[2]}', callback_data=callback_students.new(student[0], 'student_skips'))
         ikb_current_skip_students.add(button_with_student)
     await bot.send_message(chat_id=message.from_user.id,
@@ -144,12 +134,12 @@ async def today_skip(callback_query: CallbackQuery, callback_data: dict):
     date_skip_school = await sqlite_db.tomorrow_skip_school()    
     await show_skip_school(callback_query, date_skip_school, "<b>Пропуски на завтра:</b>")
 
-
+#Отлавливаем нажатие родителя, затем удаляем запись из БД
 @dp.message_handler(Text(equals=['Отменить запись'], ignore_case=True))
 async def delete_date(message: types.Message):
     student_id = await sqlite_db.get_student_id(message.from_user.id)
     skip_dates = await sqlite_db.current_dates_skip(student_id)
-    
+
     ikb_current_skip_date = InlineKeyboardMarkup()
     for skip_date in skip_dates:
         button_with_date = InlineKeyboardButton(skip_date[0], callback_data=callback_dates.new(student_id, skip_date[0], 'cancel'))
@@ -159,7 +149,12 @@ async def delete_date(message: types.Message):
                            reply_markup=ikb_current_skip_date)
 
 
-
+@dp.callback_query_handler(callback_dates.filter(action='cancel'))
+async def cancel_dates(callback_query: CallbackQuery, callback_data: dict):
+    date_time_obj = datetime.datetime.strptime(callback_data.get('delete_date'), '%Y-%m-%d')
+    student_id = callback_data.get('students_id')
+    await sqlite_db.delete_skip(student_id, date_time_obj)
+#Функции, которые записывают данные в файлы разных форматов .txt или .csv
 async def writing_txt_file(data_skip_school:list):
     file = open('Актуальные пропуски.txt','w', encoding='utf-8')
     date = ''
@@ -170,32 +165,38 @@ async def writing_txt_file(data_skip_school:list):
         file.write(skip[0] + ' ' + skip[1] + "\n")
     
 async def writing_csv_file(data_skip_school:list):
-    print
     file = open('Актуальные пропуски.csv','w', encoding='utf-8')
     date = ''
     for skip in data_skip_school:        
         if skip[2] != date or date == '':
             date = skip[2]
-            file.write(date + "\n")
-            
-            
+            file.write(date + "\n")            
         file.write(skip[0] + ';' + skip[1] + "\n")    
-
+#Отлавливаем сообщение учителя, и высылаем ему файл
 @dp.callback_query_handler(callback_school.filter(action='txt_file'))
 async def generated_txt_file(callback_query: CallbackQuery, callback_data: dict):
     data_skip_school = await sqlite_db.data_current_skip_school()
-    await writing_txt_file(data_skip_school)
-    await bot.send_document(chat_id=callback_query.message.chat.id, document=types.InputFile('Актуальные пропуски.txt'))
-    await bot.send_message(chat_id=callback_query.message.chat.id,
-                           text= 'Ваш файл готов.')
-    
+    if len(data_skip_school) > 0:
+        await writing_txt_file(data_skip_school)
+        await bot.send_document(chat_id=callback_query.message.chat.id, document=types.InputFile('Актуальные пропуски.txt'))
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                               text= 'Ваш файл готов.')
+    else:
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                               text= 'На данный момент нет запланированных пропусков.')
+        
 @dp.callback_query_handler(callback_school.filter(action='csv_file'))
 async def generated_csv_file(callback_query: CallbackQuery, callback_data: dict):
     data_skip_school = await sqlite_db.data_current_skip_school()
-    await writing_csv_file(data_skip_school)
-    await bot.send_document(chat_id=callback_query.message.chat.id, document=types.InputFile('Актуальные пропуски.csv'))
-    await bot.send_message(chat_id=callback_query.message.chat.id,
-                           text= 'Ваш файл готов.')
+    if len(data_skip_school) > 0:
+        await writing_csv_file(data_skip_school)
+        await bot.send_document(chat_id=callback_query.message.chat.id, document=types.InputFile('Актуальные пропуски.csv'))
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                            text= 'Ваш файл готов.')
+    else:
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                               text= 'На данный момент нет запланированных пропусков.')
+        
                            
 #Обработчики выбора действий с отчетами о действующих прогулах. 
 # Они вызывают функцию show_skip_school, которая отправляет сообщения 
@@ -203,7 +204,6 @@ async def generated_csv_file(callback_query: CallbackQuery, callback_data: dict)
 @dp.callback_query_handler(callback_school.filter(action='current_skip'))
 async def process_current_skip(callback_query: CallbackQuery, callback_data: dict):  
     date_skip_school = await sqlite_db.data_current_skip_school()   
-    
     await show_skip_school(callback_query, date_skip_school, "<b>Актуальные пропуски:</b>")
 
 
