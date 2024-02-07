@@ -40,10 +40,11 @@ def is_admin(admin_id):
     return len(list(result))
 
 # Функция для получения данных о прогулах всех студентов
+'''
 async def data_skip_school():
     data_skip_school = cur.execute("Select students.patronymic, students.Fname, date(skip_date,'unixepoch')  from skip_school 	INNER JOIN students ON 	skip_school.student_id = students.student_id ORDER BY skip_date ASC").fetchall()
     return data_skip_school  # list
-
+'''
 # Функция для получения всех пропусков одного ученика
 async def the_student_skips(student_id):
     the_skips = cur.execute(f"SELECT students.patronymic, students.Fname, students.Lname, date(skip_school.skip_date,'unixepoch') FROM skip_school INNER JOIN students ON skip_school.student_id= students.student_id WHERE skip_school.student_id = {student_id} ORDER BY skip_date ASC").fetchall()
